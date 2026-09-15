@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<!-- GR Gestão - Produtos PRO V2: campos escuros em sabores/adicionais - 2026-09-15 -->
+<!-- GR Gestão - Kodular native voice bridge + Produtos PRO V2 - 2026-09-15 -->
 <!-- GR Gestão: medidas, sabores e adicionais v2 -->
 <!-- GR Gestão: Link dos produtos / opção duplicada removida -->
 <!-- GR GESTÃO - COMPARTILHAR LOJA CORRIGIDO 2026-09-04 -->
@@ -1376,6 +1376,8 @@ let aiProductBusy = false;
 let aiProductRecognition = null;
 let aiProductVoiceEnabled = true;
 let aiHandsFreeVoice = false;
+let aiKodularVoiceMode = false;
+let aiKodularLastInbound = "";
 let aiRecognitionRunning = false;
 let aiAssistantSpeaking = false;
 let aiRestartTimer = null;
@@ -2184,6 +2186,50 @@ function aiSetStatus(text){
   return div;
 }
 
+function kodularBridge(){
+  try{
+    if(window.Kodular && typeof window.Kodular.setWebViewString==="function") return window.Kodular;
+  }catch(e){}
+  try{
+    if(window.AppInventor && typeof window.AppInventor.setWebViewString==="function") return window.AppInventor;
+  }catch(e){}
+  return null;
+}
+
+function kodularSet(message){
+  const bridge=kodularBridge();
+  if(!bridge)return false;
+  try{bridge.setWebViewString(String(message||""));return true}catch(e){return false}
+}
+
+function kodularGet(){
+  const bridge=kodularBridge();
+  if(!bridge)return "";
+  try{
+    if(typeof bridge.getWebViewString==="function") return String(bridge.getWebViewString()||"");
+  }catch(e){}
+  return "";
+}
+
+window.GRNativeVoiceReceive=function(text){
+  const spoken=String(text||"").trim();
+  if(!spoken)return;
+  const input=document.getElementById("aiProductInput");
+  if(input)input.value=spoken;
+  sendAiProductMessage(spoken);
+};
+
+setInterval(()=>{
+  if(!aiKodularVoiceMode)return;
+  const msg=kodularGet();
+  if(!msg || msg===aiKodularLastInbound)return;
+  aiKodularLastInbound=msg;
+  if(msg.startsWith("VOICE_RESULT|")){
+    const spoken=msg.slice(13).trim();
+    if(spoken)window.GRNativeVoiceReceive(spoken);
+  }
+},250);
+
 function updateAiVoiceStatus(text,active=false){
   const el=document.getElementById("aiVoiceStatus");
   if(!el)return;
@@ -2221,6 +2267,15 @@ function scheduleAiListening(delay=350){
 }
 
 function aiSpeak(text){
+  const clean=String(text||"").replace(/[✨🤖✅📷🎂🍰💰⚖️]/g,"");
+
+  if(aiKodularVoiceMode && kodularBridge()){
+    aiAssistantSpeaking=true;
+    updateAiVoiceStatus("🔊 A assistente está falando…",true);
+    kodularSet("SPEAK|"+clean);
+    return;
+  }
+
   if(!aiProductVoiceEnabled || !("speechSynthesis" in window)){
     if(aiHandsFreeVoice) scheduleAiListening(250);
     return;
@@ -2230,7 +2285,7 @@ function aiSpeak(text){
     window.speechSynthesis.cancel();
     aiAssistantSpeaking=true;
     updateAiVoiceStatus("🔊 A assistente está falando…",true);
-    const u=new SpeechSynthesisUtterance(String(text||"").replace(/[✨🤖✅📷🎂🍰💰⚖️]/g,""));
+    const u=new SpeechSynthesisUtterance(clean);
     u.lang="pt-BR";
     u.rate=.96;
     u.pitch=1;
@@ -2261,6 +2316,8 @@ function resetAiProductConversation(){
   aiProductLocalStep="name";
   aiProductUsingLocalFallback=false;
   aiHandsFreeVoice=false;
+  if(aiKodularVoiceMode) kodularSet("VOICE_STOP");
+  aiKodularVoiceMode=false;
   aiAssistantSpeaking=false;
   stopAiRecognition();
   document.getElementById("aiProductMic")?.classList.remove("voice-active","listening");
@@ -2530,7 +2587,13 @@ async function sendAiProductMessage(rawText){
     updateAiVoiceStatus("✅ Cadastro preenchido. Agora coloque a foto, confira e finalize.");
     applyAiProductDraftToForm();
     document.getElementById("aiProductDone")?.classList.remove("hidden");
-    aiSpeak(reply);
+    if(aiKodularVoiceMode && kodularBridge()){
+      aiKodularVoiceMode=false;
+      aiAssistantSpeaking=true;
+      kodularSet("FINAL|"+String(reply||"").replace(/[✨🤖✅📷🎂🍰💰⚖️]/g,""));
+    }else{
+      aiSpeak(reply);
+    }
   }else{
     aiSpeak(reply);
   }
@@ -3141,6 +3204,28 @@ document.getElementById("aiProductInput").addEventListener("keydown",e=>{
   if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendAiProductMessage(e.currentTarget.value);}
 });
 document.getElementById("aiProductMic").addEventListener("click",()=>{
+  const btn=document.getElementById("aiProductMic");
+
+  // Dentro do app Kodular, usa o microfone nativo do Android.
+  if(kodularBridge()){
+    aiKodularVoiceMode=!aiKodularVoiceMode;
+    aiHandsFreeVoice=aiKodularVoiceMode;
+    if(aiKodularVoiceMode){
+      btn?.classList.add("voice-active");
+      aiAssistantSpeaking=false;
+      aiKodularLastInbound="";
+      updateAiVoiceStatus("🎙️ Conversa por voz ativada. Pode falar.",true);
+      kodularSet("MIC_START");
+    }else{
+      btn?.classList.remove("voice-active","listening");
+      aiAssistantSpeaking=false;
+      updateAiVoiceStatus("Conversa por voz pausada. Toque no microfone para continuar.");
+      kodularSet("VOICE_STOP");
+    }
+    return;
+  }
+
+  // No navegador comum, mantém o reconhecimento de voz do próprio navegador.
   if(!aiProductRecognition) aiProductRecognition=initAiProductSpeech();
   if(!aiProductRecognition){
     showToast("O microfone por voz não é compatível com este navegador.");
@@ -3148,8 +3233,6 @@ document.getElementById("aiProductMic").addEventListener("click",()=>{
   }
 
   aiHandsFreeVoice=!aiHandsFreeVoice;
-  const btn=document.getElementById("aiProductMic");
-
   if(aiHandsFreeVoice){
     btn?.classList.add("voice-active");
     if("speechSynthesis" in window) window.speechSynthesis.cancel();
