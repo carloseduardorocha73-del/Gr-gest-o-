@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<!-- GR Gestão - Produtos PRO V2: sabores/adicionais com valor individual - 2026-09-15 -->
+<!-- GR Gestão - Produtos PRO V2 corrigido: botão abre campos de sabor/adicional - 2026-09-15 -->
 <!-- GR Gestão: medidas, sabores e adicionais v2 -->
 <!-- GR Gestão: Link dos produtos / opção duplicada removida -->
 <!-- GR GESTÃO - COMPARTILHAR LOJA CORRIGIDO 2026-09-04 -->
@@ -877,7 +877,7 @@ body:not(.gr-authenticated) #mainApp{display:none !important}
         <button class="option-add-btn" id="newAddFlavor" type="button">＋ Adicionar sabor</button>
       </div>
       <div class="option-row-list" id="newFlavorRows"></div>
-      <div class="option-empty" id="newFlavorEmpty">Nenhum sabor adicionado.</div>
+      <div class="option-empty" id="newFlavorEmpty">Toque em “Adicionar sabor” para abrir os campos de nome e valor.</div>
       <textarea id="newProductFlavors" class="hidden"></textarea>
     </div>
 
@@ -894,7 +894,7 @@ body:not(.gr-authenticated) #mainApp{display:none !important}
         <button class="option-add-btn" id="newAddAddon" type="button">＋ Adicionar adicional</button>
       </div>
       <div class="option-row-list" id="newAddonRows"></div>
-      <div class="option-empty" id="newAddonEmpty">Nenhum adicional adicionado.</div>
+      <div class="option-empty" id="newAddonEmpty">Toque em “Adicionar adicional” para abrir os campos de nome e valor.</div>
       <textarea id="newProductAddons" class="hidden"></textarea>
     </div>
   </div>
@@ -2615,7 +2615,10 @@ function parsePricedItems(value){
   try{
     const parsed=JSON.parse(raw);
     if(Array.isArray(parsed)){
-      return parsed.map(x=>typeof x==="string"?{name:x,price:0}:{name:String(x?.name||"").trim(),price:Math.max(0,Number(x?.price||0))}).filter(x=>x.name);
+      return parsed.map(x=>typeof x==="string"
+        ? {name:x,price:0}
+        : {name:String(x?.name||""),price:Math.max(0,Number(x?.price||0))}
+      );
     }
   }catch(e){}
   return parseLines(raw).map(line=>{
@@ -2638,7 +2641,10 @@ function getFlavorItems(prefix){
   return parsePricedItems(document.getElementById(prefix+"ProductFlavors")?.value);
 }
 function setFlavorItems(prefix,items){
-  const clean=(items||[]).map(x=>({name:String(x?.name||"").trim(),price:Math.max(0,Number(x?.price||0))})).filter(x=>x.name||x.price>0);
+  const clean=(items||[]).map(x=>({
+    name:String(x?.name||""),
+    price:Math.max(0,Number(x?.price||0))
+  }));
   const hidden=document.getElementById(prefix+"ProductFlavors");
   if(hidden)hidden.value=JSON.stringify(clean);
   renderFlavorBuilder(prefix);
@@ -2676,8 +2682,12 @@ function getAddonItems(prefix){
   return parsePricedItems(document.getElementById(prefix+"ProductAddons")?.value);
 }
 function setAddonItems(prefix,items){
-  const clean=(items||[]).map(x=>({name:String(x?.name||"").trim(),price:Math.max(0,Number(x?.price||0))})).filter(x=>x.name||x.price>0);
-  const hidden=document.getElementById(prefix+"ProductAddons");if(hidden)hidden.value=JSON.stringify(clean);
+  const clean=(items||[]).map(x=>({
+    name:String(x?.name||""),
+    price:Math.max(0,Number(x?.price||0))
+  }));
+  const hidden=document.getElementById(prefix+"ProductAddons");
+  if(hidden)hidden.value=JSON.stringify(clean);
   renderAddonBuilder(prefix);
 }
 function renderAddonBuilder(prefix){
