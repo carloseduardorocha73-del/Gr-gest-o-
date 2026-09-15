@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<!-- GR Gestão - Cadastro com IA + voz - 2026-09-15 -->
+<!-- GR Gestão - IA voz contínua + correção visual - 2026-09-15 -->
 <!-- GR Gestão: medidas, sabores e adicionais v2 -->
 <!-- GR Gestão: Link dos produtos / opção duplicada removida -->
 <!-- GR GESTÃO - COMPARTILHAR LOJA CORRIGIDO 2026-09-04 -->
@@ -356,7 +356,8 @@ body:not(.gr-authenticated) #mainApp{display:none !important}
   border-bottom-left-radius:5px;
 }
 .ai-message.user{
-  align-self:flex-end;background:var(--primary);color:#fff;
+  align-self:flex-end;background:var(--blue);color:#fff;
+  border:1px solid rgba(255,255,255,.08);
   border-bottom-right-radius:5px;
 }
 .ai-message.status{
@@ -372,7 +373,14 @@ body:not(.gr-authenticated) #mainApp{display:none !important}
 }
 .ai-composer input{
   margin:0;min-width:0;border-radius:14px;
+  border:1px solid var(--border);
+  background:var(--card);
+  color:var(--text);
+  padding:0 13px;
+  outline:none;
 }
+.ai-composer input::placeholder{color:var(--muted)}
+.ai-composer input:focus{border-color:var(--blue);box-shadow:0 0 0 2px rgba(37,99,235,.15)}
 .ai-round{
   width:46px;height:46px;border-radius:14px;border:1px solid var(--border);
   background:var(--card);color:var(--text);font-size:19px;font-weight:900;
@@ -382,10 +390,20 @@ body:not(.gr-authenticated) #mainApp{display:none !important}
   animation:aiPulse 1s infinite;
 }
 @keyframes aiPulse{50%{transform:scale(1.06)}}
+.ai-round.voice-active{
+  background:rgba(37,99,235,.16);
+  border-color:rgba(37,99,235,.55);
+  box-shadow:0 0 0 3px rgba(37,99,235,.10);
+}
+.ai-voice-status{
+  font-size:12px;color:var(--muted);margin-top:9px;line-height:1.4
+}
+.ai-voice-status.active{color:#60a5fa;font-weight:800}
 .ai-send{
-  width:48px;height:46px;border-radius:14px;border:0;background:var(--primary);
+  width:48px;height:46px;border-radius:14px;border:0;background:var(--blue);
   color:#fff;font-size:20px;font-weight:900;
 }
+.ai-send:disabled{opacity:.55}
 .ai-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .ai-actions button{flex:1;min-width:125px}
 .ai-final-card{
@@ -703,8 +721,9 @@ body:not(.gr-authenticated) #mainApp{display:none !important}
         <span class="ai-badge" id="aiModeBadge">IA online</span>
       </div>
       <div class="ai-summary" id="aiProductSummary">Ainda não começamos o cadastro.</div>
+      <div class="ai-voice-status" id="aiVoiceStatus">Toque uma vez no microfone para iniciar uma conversa por voz contínua.</div>
       <div class="ai-actions">
-        <button class="secondary" id="aiVoiceToggle">🔊 Voz ligada</button>
+        <button class="secondary" id="aiVoiceToggle">🔊 Respostas em voz</button>
         <button class="secondary" id="aiRestartProduct">↻ Recomeçar</button>
       </div>
     </div>
@@ -1207,6 +1226,10 @@ let aiProductDraft = null;
 let aiProductBusy = false;
 let aiProductRecognition = null;
 let aiProductVoiceEnabled = true;
+let aiHandsFreeVoice = false;
+let aiRecognitionRunning = false;
+let aiAssistantSpeaking = false;
+let aiRestartTimer = null;
 let aiProductLocalStep = "name";
 let aiProductUsingLocalFallback = false;
 
@@ -1997,14 +2020,74 @@ function aiSetStatus(text){
   return div;
 }
 
+function updateAiVoiceStatus(text,active=false){
+  const el=document.getElementById("aiVoiceStatus");
+  if(!el)return;
+  el.textContent=text;
+  el.classList.toggle("active",!!active);
+}
+
+function stopAiRecognition(){
+  clearTimeout(aiRestartTimer);
+  aiRestartTimer=null;
+  if(aiProductRecognition && aiRecognitionRunning){
+    try{aiProductRecognition.stop();}catch(e){}
+  }
+}
+
+function scheduleAiListening(delay=350){
+  if(!aiHandsFreeVoice || aiProductBusy || aiAssistantSpeaking)return;
+  clearTimeout(aiRestartTimer);
+  aiRestartTimer=setTimeout(()=>{
+    if(!aiHandsFreeVoice || aiProductBusy || aiAssistantSpeaking || aiRecognitionRunning)return;
+    if(!aiProductRecognition) aiProductRecognition=initAiProductSpeech();
+    if(!aiProductRecognition){
+      aiHandsFreeVoice=false;
+      document.getElementById("aiProductMic")?.classList.remove("voice-active","listening");
+      updateAiVoiceStatus("Este navegador não oferece conversa por voz contínua.");
+      return;
+    }
+    try{
+      aiProductRecognition.start();
+      updateAiVoiceStatus("🎙️ Estou ouvindo. Pode falar.",true);
+    }catch(e){
+      aiRestartTimer=setTimeout(()=>scheduleAiListening(500),700);
+    }
+  },delay);
+}
+
 function aiSpeak(text){
-  if(!aiProductVoiceEnabled || !("speechSynthesis" in window)) return;
+  if(!aiProductVoiceEnabled || !("speechSynthesis" in window)){
+    if(aiHandsFreeVoice) scheduleAiListening(250);
+    return;
+  }
   try{
+    stopAiRecognition();
     window.speechSynthesis.cancel();
+    aiAssistantSpeaking=true;
+    updateAiVoiceStatus("🔊 A assistente está falando…",true);
     const u=new SpeechSynthesisUtterance(String(text||"").replace(/[✨🤖✅📷🎂🍰💰⚖️]/g,""));
-    u.lang="pt-BR";u.rate=.96;u.pitch=1;
+    u.lang="pt-BR";
+    u.rate=.96;
+    u.pitch=1;
+    u.onend=()=>{
+      aiAssistantSpeaking=false;
+      if(aiHandsFreeVoice){
+        updateAiVoiceStatus("🎙️ Sua vez. Pode responder.",true);
+        scheduleAiListening(250);
+      }else{
+        updateAiVoiceStatus("Toque uma vez no microfone para iniciar uma conversa por voz contínua.");
+      }
+    };
+    u.onerror=()=>{
+      aiAssistantSpeaking=false;
+      if(aiHandsFreeVoice) scheduleAiListening(250);
+    };
     window.speechSynthesis.speak(u);
-  }catch(e){}
+  }catch(e){
+    aiAssistantSpeaking=false;
+    if(aiHandsFreeVoice) scheduleAiListening(250);
+  }
 }
 
 function resetAiProductConversation(){
@@ -2013,6 +2096,11 @@ function resetAiProductConversation(){
   aiProductBusy=false;
   aiProductLocalStep="name";
   aiProductUsingLocalFallback=false;
+  aiHandsFreeVoice=false;
+  aiAssistantSpeaking=false;
+  stopAiRecognition();
+  document.getElementById("aiProductMic")?.classList.remove("voice-active","listening");
+  updateAiVoiceStatus("Toque uma vez no microfone para iniciar uma conversa por voz contínua.");
   const box=document.getElementById("aiProductMessages");
   if(box) box.innerHTML="";
   document.getElementById("aiProductDone")?.classList.add("hidden");
@@ -2163,6 +2251,8 @@ async function sendAiProductMessage(rawText){
   const text=String(rawText||"").trim();
   if(!text || aiProductBusy) return;
   aiProductBusy=true;
+  stopAiRecognition();
+  updateAiVoiceStatus("⏳ Entendendo sua resposta…",true);
   const input=document.getElementById("aiProductInput");
   if(input) input.value="";
   aiProductConversation.push({role:"user",text});
@@ -2236,22 +2326,66 @@ function applyAiProductDraftToForm(){
 function initAiProductSpeech(){
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(!SR) return null;
+
   const rec=new SR();
   rec.lang="pt-BR";
-  rec.interimResults=false;
+  rec.interimResults=true;
   rec.continuous=false;
   rec.maxAlternatives=1;
-  rec.onstart=()=>document.getElementById("aiProductMic")?.classList.add("listening");
-  rec.onend=()=>document.getElementById("aiProductMic")?.classList.remove("listening");
-  rec.onerror=()=>document.getElementById("aiProductMic")?.classList.remove("listening");
+
+  let finalText="";
+
+  rec.onstart=()=>{
+    aiRecognitionRunning=true;
+    finalText="";
+    document.getElementById("aiProductMic")?.classList.add("listening","voice-active");
+    updateAiVoiceStatus("🎙️ Estou ouvindo. Pode falar.",true);
+  };
+
   rec.onresult=e=>{
-    const text=e.results?.[0]?.[0]?.transcript||"";
-    if(text){
-      const input=document.getElementById("aiProductInput");
-      if(input) input.value=text;
-      sendAiProductMessage(text);
+    let interim="";
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const t=e.results[i][0]?.transcript||"";
+      if(e.results[i].isFinal) finalText+=t+" ";
+      else interim+=t;
+    }
+    const input=document.getElementById("aiProductInput");
+    if(input) input.value=(finalText+interim).trim();
+
+    if(finalText.trim()){
+      const spoken=finalText.trim();
+      finalText="";
+      try{rec.stop();}catch(err){}
+      setTimeout(()=>sendAiProductMessage(spoken),80);
     }
   };
+
+  rec.onspeechend=()=>{
+    try{rec.stop();}catch(e){}
+  };
+
+  rec.onend=()=>{
+    aiRecognitionRunning=false;
+    document.getElementById("aiProductMic")?.classList.remove("listening");
+    if(aiHandsFreeVoice && !aiProductBusy && !aiAssistantSpeaking){
+      scheduleAiListening(350);
+    }
+  };
+
+  rec.onerror=e=>{
+    aiRecognitionRunning=false;
+    document.getElementById("aiProductMic")?.classList.remove("listening");
+    if(e.error==="not-allowed" || e.error==="service-not-allowed"){
+      aiHandsFreeVoice=false;
+      document.getElementById("aiProductMic")?.classList.remove("voice-active");
+      updateAiVoiceStatus("Permita o uso do microfone no navegador para conversar por voz.");
+      return;
+    }
+    if(aiHandsFreeVoice && !aiProductBusy && !aiAssistantSpeaking){
+      scheduleAiListening(650);
+    }
+  };
+
   return rec;
 }
 
@@ -2658,13 +2792,36 @@ document.getElementById("aiProductInput").addEventListener("keydown",e=>{
 });
 document.getElementById("aiProductMic").addEventListener("click",()=>{
   if(!aiProductRecognition) aiProductRecognition=initAiProductSpeech();
-  if(!aiProductRecognition){showToast("O microfone por voz não é compatível com este navegador.");return;}
-  try{aiProductRecognition.start();}catch(e){}
+  if(!aiProductRecognition){
+    showToast("O microfone por voz não é compatível com este navegador.");
+    return;
+  }
+
+  aiHandsFreeVoice=!aiHandsFreeVoice;
+  const btn=document.getElementById("aiProductMic");
+
+  if(aiHandsFreeVoice){
+    btn?.classList.add("voice-active");
+    if("speechSynthesis" in window) window.speechSynthesis.cancel();
+    aiAssistantSpeaking=false;
+    updateAiVoiceStatus("🎙️ Conversa por voz ativada. Pode falar.",true);
+    scheduleAiListening(100);
+  }else{
+    btn?.classList.remove("voice-active","listening");
+    stopAiRecognition();
+    if("speechSynthesis" in window) window.speechSynthesis.cancel();
+    aiAssistantSpeaking=false;
+    updateAiVoiceStatus("Conversa por voz pausada. Toque no microfone para continuar.");
+  }
 });
 document.getElementById("aiVoiceToggle").addEventListener("click",e=>{
   aiProductVoiceEnabled=!aiProductVoiceEnabled;
-  e.currentTarget.textContent=aiProductVoiceEnabled?"🔊 Voz ligada":"🔇 Voz desligada";
-  if(!aiProductVoiceEnabled && "speechSynthesis" in window) window.speechSynthesis.cancel();
+  e.currentTarget.textContent=aiProductVoiceEnabled?"🔊 Respostas em voz":"🔇 Respostas sem voz";
+  if(!aiProductVoiceEnabled && "speechSynthesis" in window){
+    window.speechSynthesis.cancel();
+    aiAssistantSpeaking=false;
+    if(aiHandsFreeVoice) scheduleAiListening(200);
+  }
 });
 document.getElementById("aiReviewProduct").addEventListener("click",()=>{
   applyAiProductDraftToForm();
