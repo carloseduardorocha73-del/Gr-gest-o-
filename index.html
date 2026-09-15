@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<!-- GR Gestão - Produtos PRO V2 corrigido: botão abre campos de sabor/adicional - 2026-09-15 -->
+<!-- GR Gestão - Produtos PRO V2: campos escuros em sabores/adicionais - 2026-09-15 -->
 <!-- GR Gestão: medidas, sabores e adicionais v2 -->
 <!-- GR Gestão: Link dos produtos / opção duplicada removida -->
 <!-- GR GESTÃO - COMPARTILHAR LOJA CORRIGIDO 2026-09-04 -->
@@ -490,6 +490,34 @@ body:not(.gr-authenticated) #mainApp{display:none !important}
   .option-editor-row{grid-template-columns:minmax(0,1fr) 108px 40px;padding:9px}
   .option-builder-head{align-items:stretch;flex-direction:column}
   .option-builder-head .option-add-btn{width:100%}
+}
+
+
+/* Correção visual: campos de sabores e adicionais no tema escuro */
+.option-editor-row input{
+  background:var(--bg-soft, #12151c) !important;
+  color:var(--text, #f7f7f8) !important;
+  border:1px solid var(--border, #2a2e39) !important;
+  border-radius:12px !important;
+  padding:12px 13px !important;
+  box-shadow:none !important;
+  outline:none !important;
+  -webkit-text-fill-color:var(--text, #f7f7f8) !important;
+}
+.option-editor-row input::placeholder{
+  color:var(--muted, #9ca3af) !important;
+  opacity:1;
+}
+.option-editor-row input:focus{
+  border-color:var(--blue, #2563eb) !important;
+  box-shadow:0 0 0 2px rgba(37,99,235,.14) !important;
+}
+.option-editor-row input:-webkit-autofill,
+.option-editor-row input:-webkit-autofill:hover,
+.option-editor-row input:-webkit-autofill:focus{
+  -webkit-box-shadow:0 0 0 1000px #12151c inset !important;
+  -webkit-text-fill-color:#f7f7f8 !important;
+  caret-color:#f7f7f8 !important;
 }
 
 </style>
