@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<!-- GR Gestão - Kodular native voice bridge + Produtos PRO V2 - 2026-09-15 -->
+<!-- GR Gestão - Kodular voice + multifotos até 6 por produto - 2026-09-15 -->
 <!-- GR Gestão: medidas, sabores e adicionais v2 -->
 <!-- GR Gestão: Link dos produtos / opção duplicada removida -->
 <!-- GR GESTÃO - COMPARTILHAR LOJA CORRIGIDO 2026-09-04 -->
@@ -520,6 +520,40 @@ body:not(.gr-authenticated) #mainApp{display:none !important}
   caret-color:#f7f7f8 !important;
 }
 
+
+/* ===== MULTIFOTOS DO PRODUTO ===== */
+.product-photo-help{
+  color:var(--muted);font-size:12px;line-height:1.45;margin:8px 0 12px
+}
+.product-photo-grid{
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;
+  margin:12px 0
+}
+.product-photo-empty{
+  grid-column:1/-1;min-height:120px;border:1px dashed var(--border);
+  border-radius:16px;background:var(--bg);display:flex;align-items:center;
+  justify-content:center;flex-direction:column;gap:6px;color:var(--muted)
+}
+.product-photo-empty span{font-size:34px}
+.product-photo-item{
+  position:relative;aspect-ratio:1/1;border-radius:15px;overflow:hidden;
+  border:1px solid var(--border);background:var(--bg)
+}
+.product-photo-item img{width:100%;height:100%;object-fit:cover;display:block}
+.product-photo-cover{
+  position:absolute;left:6px;bottom:6px;background:rgba(8,11,18,.84);
+  color:#fff;border:1px solid rgba(255,255,255,.16);font-size:10px;
+  border-radius:999px;padding:5px 7px;font-weight:800;backdrop-filter:blur(5px)
+}
+.product-photo-remove{
+  position:absolute;right:6px;top:6px;width:30px;height:30px;border-radius:10px;
+  border:1px solid rgba(255,255,255,.15);background:rgba(24,26,33,.9);
+  color:#ff8a8a;font-weight:1000;font-size:17px;display:grid;place-items:center;
+  padding:0
+}
+.product-photo-count{font-size:12px;color:#9fb9ff;font-weight:800;margin-top:7px}
+@media(max-width:420px){.product-photo-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}}
+
 </style>
 </head>
 
@@ -862,11 +896,13 @@ body:not(.gr-authenticated) #mainApp{display:none !important}
     ✨ <b>Prontinho!</b> A IA já preencheu as informações. Agora é só você pôr a foto, conferir e finalizar o cadastro.
   </div>
 
-  <div class="detail-card" style="text-align:center">
-    <div class="photo-preview" id="newProductPreview">🖼️</div>
-    <strong>Foto do produto</strong>
-    <input type="file" id="newProductImage" accept="image/*" class="hidden">
-    <button class="secondary" id="addImageDemo">＋ 📷 Adicionar imagem</button>
+  <div class="detail-card">
+    <div class="detail-title">📷 Fotos do produto</div>
+    <div class="product-photo-help">Você pode adicionar até <b>6 fotos</b>. A primeira foto será usada como capa na loja do cliente.</div>
+    <input type="file" id="newProductImage" accept="image/*" multiple class="hidden">
+    <button class="secondary" id="addImageDemo">＋ 📷 Adicionar fotos</button>
+    <div class="product-photo-grid" id="newProductGallery"></div>
+    <div class="product-photo-count" id="newProductPhotoCount"></div>
   </div>
 
   <div class="form-group"><label>📝 Nome do produto</label><input id="newProductName" placeholder="Digite o nome..."></div>
@@ -948,10 +984,13 @@ body:not(.gr-authenticated) #mainApp{display:none !important}
     <div><h1>Editar produto</h1><p>Altere as informações do produto</p></div>
   </div>
 
-  <div class="detail-card" style="text-align:center">
-    <div class="photo-preview" id="editProductPreview">📦</div>
-    <input type="file" id="editProductImage" accept="image/*" class="hidden">
-    <button class="secondary" id="editImageBtn">📷 Alterar imagem</button>
+  <div class="detail-card">
+    <div class="detail-title">📷 Fotos do produto</div>
+    <div class="product-photo-help">Adicione até <b>6 fotos</b>. A primeira é a capa. Você pode remover e adicionar novas fotos quando quiser.</div>
+    <input type="file" id="editProductImage" accept="image/*" multiple class="hidden">
+    <button class="secondary" id="editImageBtn">＋ 📷 Adicionar mais fotos</button>
+    <div class="product-photo-grid" id="editProductGallery"></div>
+    <div class="product-photo-count" id="editProductPhotoCount"></div>
   </div>
 
   <div class="form-group"><label>📝 Nome</label><input id="editProductName"></div>
@@ -1360,6 +1399,8 @@ calendarCursor.setDate(1);
 let newOrderDraft = {items:[]};
 let newProductImageData = "";
 let editProductImageData = "";
+let newProductImages = [];
+let editProductImages = [];
 let activeUser = null;
 let supabaseClient = null;
 let syncTimer = null;
@@ -1475,8 +1516,8 @@ async function syncPublicCatalog(){
       unit:p.unit||"Unidade",
       description:p.description||"",
       available:p.available!==false,
-      image:p.image||"",
-      options:p.options||{},
+      image:(Array.isArray(p.images)&&p.images.length?p.images[0]:(p.image||"")),
+      options:{...(p.options||{}),images:(Array.isArray(p.images)&&p.images.length?p.images:(p.image?[p.image]:[]))},
       updated_at:new Date().toISOString()
     }));
 
@@ -2849,8 +2890,95 @@ function applyUnitDefaults(prefix){
   const d=unitDefaults(unit);const set=(s,v)=>{const el=document.getElementById(prefix+"Product"+s);if(el)el.value=v};
   set("MeasureMin",d.min);set("MeasureMax",d.max);set("MeasureStep",d.step);
 }
+
+function productImageList(p){
+  const list=[];
+  if(Array.isArray(p?.images)) list.push(...p.images);
+  if(Array.isArray(p?.options?.images)) list.push(...p.options.images);
+  if(p?.image) list.unshift(p.image);
+  return [...new Set(list.filter(x=>typeof x==="string"&&x.trim()))].slice(0,6);
+}
+
+function renderProductPhotoGallery(prefix){
+  const isNew=prefix==="new";
+  const list=isNew?newProductImages:editProductImages;
+  const gallery=document.getElementById(prefix+"ProductGallery");
+  const count=document.getElementById(prefix+"ProductPhotoCount");
+  if(!gallery)return;
+  if(!list.length){
+    gallery.innerHTML=`<div class="product-photo-empty"><span>🖼️</span><b>Nenhuma foto adicionada</b><small>Toque em “Adicionar fotos”.</small></div>`;
+  }else{
+    gallery.innerHTML=list.map((src,i)=>`
+      <div class="product-photo-item">
+        <img src="${escapeHTML(src)}" alt="Foto ${i+1}">
+        ${i===0?'<span class="product-photo-cover">CAPA</span>':""}
+        <button type="button" class="product-photo-remove" data-remove-product-photo="${i}" data-photo-prefix="${prefix}" aria-label="Remover foto">×</button>
+      </div>`).join("");
+  }
+  if(count) count.textContent=list.length?`${list.length} de 6 fotos adicionadas`:"Até 6 fotos";
+}
+
+function compressProductImage(file){
+  return new Promise((resolve,reject)=>{
+    if(!file || !String(file.type||"").startsWith("image/")){reject(new Error("Arquivo inválido"));return;}
+    const reader=new FileReader();
+    reader.onerror=()=>reject(new Error("Não foi possível ler a imagem."));
+    reader.onload=()=>{
+      const img=new Image();
+      img.onerror=()=>reject(new Error("Imagem inválida."));
+      img.onload=()=>{
+        try{
+          const maxSide=1280;
+          const scale=Math.min(1,maxSide/Math.max(img.width||1,img.height||1));
+          const w=Math.max(1,Math.round(img.width*scale));
+          const h=Math.max(1,Math.round(img.height*scale));
+          const canvas=document.createElement("canvas"); canvas.width=w; canvas.height=h;
+          const ctx=canvas.getContext("2d");
+          ctx.drawImage(img,0,0,w,h);
+          resolve(canvas.toDataURL("image/jpeg",.82));
+        }catch(err){reject(err)}
+      };
+      img.src=String(reader.result||"");
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function addProductPhotos(prefix,files){
+  const target=prefix==="new"?newProductImages:editProductImages;
+  const available=Math.max(0,6-target.length);
+  const selected=Array.from(files||[]).slice(0,available);
+  if(!selected.length){
+    showToast(target.length>=6?"Máximo de 6 fotos por produto.":"Escolha uma foto.");
+    return;
+  }
+  for(const file of selected){
+    try{
+      const data=await compressProductImage(file);
+      target.push(data);
+    }catch(e){
+      console.warn(e);
+      showToast("Uma das imagens não pôde ser adicionada.");
+    }
+  }
+  if(prefix==="new") newProductImageData=newProductImages[0]||"";
+  else editProductImageData=editProductImages[0]||"";
+  renderProductPhotoGallery(prefix);
+}
+
+function removeProductPhoto(prefix,index){
+  const target=prefix==="new"?newProductImages:editProductImages;
+  const i=Number(index);
+  if(!Number.isInteger(i)||i<0||i>=target.length)return;
+  target.splice(i,1);
+  if(prefix==="new") newProductImageData=target[0]||"";
+  else editProductImageData=target[0]||"";
+  renderProductPhotoGallery(prefix);
+}
+
 function renderAddProduct(){
-  document.getElementById("newProductPreview").innerHTML=newProductImageData?`<img src="${escapeHTML(newProductImageData)}" alt="">`:"🖼️";
+  if(!newProductImages.length && newProductImageData) newProductImages=[newProductImageData];
+  renderProductPhotoGallery("new");
   toggleCustomFields("new");
   renderCustomBuilders("new");
 }
@@ -2858,8 +2986,9 @@ function renderAddProduct(){
 function renderEditProduct(){
   const p=state.products.find(x=>x.id===state.editingProductId);
   if(!p){ showScreen("products",false); return; }
-  if(editProductImageData==="") editProductImageData=p.image||"";
-  document.getElementById("editProductPreview").innerHTML=editProductImageData?`<img src="${escapeHTML(editProductImageData)}" alt="">`:"📦";
+  if(!editProductImages.length) editProductImages=productImageList(p);
+  editProductImageData=editProductImages[0]||"";
+  renderProductPhotoGallery("edit");
   document.getElementById("editProductName").value=p.name||"";
   document.getElementById("editProductPrice").value=Number(p.price||0);
   document.getElementById("editProductUnit").value=p.unit||"Unidade";
@@ -3040,6 +3169,7 @@ document.addEventListener("click",event=>{
   if(productCard){
     state.editingProductId=productCard.dataset.productId;
     editProductImageData="";
+    editProductImages=[];
     showScreen("editProduct");
     return;
   }
@@ -3278,6 +3408,8 @@ document.addEventListener("input",e=>{
 document.addEventListener("click",e=>{
   const f=e.target.closest("[data-remove-flavor]");if(f){removeFlavorItem(f.dataset.prefix,f.dataset.removeFlavor);return;}
   const a=e.target.closest("[data-remove-addon]");if(a){removeAddonItem(a.dataset.prefix,a.dataset.removeAddon);return;}
+  const ph=e.target.closest("[data-remove-product-photo]");
+  if(ph){removeProductPhoto(ph.dataset.photoPrefix,ph.dataset.removeProductPhoto);return;}
 });
 
 document.getElementById("newProductCustomMode").addEventListener("change",()=>toggleCustomFields("new"));
@@ -3285,11 +3417,9 @@ document.getElementById("editProductCustomMode").addEventListener("change",()=>t
 document.getElementById("newProductUnit").addEventListener("change",()=>applyUnitDefaults("new"));
 document.getElementById("editProductUnit").addEventListener("change",()=>applyUnitDefaults("edit"));
 document.getElementById("addImageDemo").addEventListener("click",()=>document.getElementById("newProductImage").click());
-document.getElementById("newProductImage").addEventListener("change",e=>{
-  fileToDataURL(e.target.files[0],data=>{
-    newProductImageData=data;
-    document.getElementById("newProductPreview").innerHTML=`<img src="${escapeHTML(data)}" alt="">`;
-  });
+document.getElementById("newProductImage").addEventListener("change",async e=>{
+  await addProductPhotos("new",e.target.files);
+  e.target.value="";
 });
 
 document.getElementById("createProduct").addEventListener("click",()=>{
@@ -3305,7 +3435,8 @@ document.getElementById("createProduct").addEventListener("click",()=>{
     unit:document.getElementById("newProductUnit").value,
     description:document.getElementById("newProductDescription").value.trim(),
     available:document.getElementById("newProductAvailable").value==="true",
-    image:newProductImageData,
+    image:newProductImages[0]||newProductImageData||"",
+    images:newProductImages.slice(),
     options:readProductOptions("new")
   });
   saveState();
@@ -3318,7 +3449,8 @@ document.getElementById("createProduct").addEventListener("click",()=>{
   fillProductOptions("new",{},"Unidade");
   document.getElementById("newProductImage").value="";
   newProductImageData="";
-  document.getElementById("newProductPreview").textContent="🖼️";
+  newProductImages=[];
+  renderProductPhotoGallery("new");
   document.getElementById("aiFilledNotice")?.classList.add("hidden");
 
   showScreen("products");
@@ -3326,11 +3458,9 @@ document.getElementById("createProduct").addEventListener("click",()=>{
 });
 
 document.getElementById("editImageBtn").addEventListener("click",()=>document.getElementById("editProductImage").click());
-document.getElementById("editProductImage").addEventListener("change",e=>{
-  fileToDataURL(e.target.files[0],data=>{
-    editProductImageData=data;
-    document.getElementById("editProductPreview").innerHTML=`<img src="${escapeHTML(data)}" alt="">`;
-  });
+document.getElementById("editProductImage").addEventListener("change",async e=>{
+  await addProductPhotos("edit",e.target.files);
+  e.target.value="";
 });
 
 document.getElementById("saveProduct").addEventListener("click",()=>{
@@ -3344,10 +3474,12 @@ document.getElementById("saveProduct").addEventListener("click",()=>{
   p.unit=document.getElementById("editProductUnit").value;
   p.description=document.getElementById("editProductDescription").value.trim();
   p.available=document.getElementById("editProductAvailable").value==="true";
-  p.image=editProductImageData||"";
+  p.images=editProductImages.slice();
+  p.image=editProductImages[0]||editProductImageData||"";
   p.options=readProductOptions("edit");
   saveState();
   editProductImageData="";
+  editProductImages=[];
   showScreen("products");
   showToast("Produto atualizado!");
 });
